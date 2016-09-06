@@ -190,6 +190,19 @@ class IntegSquash(unittest.TestCase):
                 assert member.islnk(
                 ) == False, "File '%s' should not be a hard link, but it is" % name
 
+        def assertFileIsASymlinkTo(self, name, target):
+            self.squashed_layer.seek(0)  # Rewind
+            with tarfile.open(fileobj=self.squashed_layer, mode='r') as tar:
+                member = tar.getmember(name)
+                assert member.issym(
+                ) == True, "File '%s' should be a symbolic link, but it is not" % name
+                assert member.linkname == target, "File '%s' should point to '%s' but it's pointing to '%s'" % (name, target, member.linkname)
+
+        def assertFileContentIsEqual(self, name, content):
+            reader = codecs.getreader("utf-8")
+            actual_content = self._extract_file(name, self.squashed_layer)
+            assert str(actual_content.read().decode("utf-8")) == content
+
     class Container(object):
 
         def __init__(self, image):
@@ -943,6 +956,31 @@ class TestIntegSquash(IntegSquash):
                     container.assertFileExists('data-template/etc/systemd/system/multi-user.target.wants')
                     container.assertFileExists('data-template/etc/systemd/system/container-ipa.target.wants/ipa-server-configure-first.service')
                     container.assertFileExists('etc/systemd/system')
+
+    # https://github.com/goldmann/docker-squash/issues/124
+    def test_should_preserve_symlinks_when_modified_in_different_layers(self):
+        dockerfile = '''
+        FROM %s
+        RUN echo "Implement me" > A
+        RUN echo "Implement me" > B
+        RUN echo "Implement me" > C
+
+        RUN echo "Worked" > A
+        RUN ln -sf A B
+        RUN ln -sf A C
+        ''' % TestIntegSquash.BUSYBOX_IMAGE
+
+        with self.Image(dockerfile) as image:
+            with self.SquashedImage(image, 3, numeric=True) as squashed_image:
+                squashed_image.assertFileContentIsEqual('A', "Worked\n")
+                squashed_image.assertFileContentIsEqual('B', "Worked\n")
+                squashed_image.assertFileContentIsEqual('C', "Worked\n")
+                squashed_image.assertFileIsASymlinkTo('B', 'A')
+                squashed_image.assertFileIsASymlinkTo('C', 'A')
+                with self.Container(squashed_image) as container:
+                    container.assertFileExists('A')
+                    container.assertFileExists('B')
+                    container.assertFileExists('C')
 
 
 class NumericValues(IntegSquash):
