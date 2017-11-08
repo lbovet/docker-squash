@@ -226,9 +226,6 @@ class V2Image(Image):
         # Using OrderedDict, because order of JSON elements is important
         v1_metadata = OrderedDict(self.old_image_config)
 
-        # Update image creation date
-        v1_metadata['created'] = self.date
-
         # Remove unnecessary elements
         # Do not fail if key is not found
         for key in 'history', 'rootfs', 'container':
@@ -282,8 +279,6 @@ class V2Image(Image):
         with open(config_file, 'r') as f:
             config = json.load(f, object_pairs_hook=OrderedDict)
 
-        config['created'] = self.date
-
         if self.squash_id:
             # Update image id, should be one layer below squashed layer
             config['config']['Image'] = self.squash_id
@@ -304,8 +299,6 @@ class V2Image(Image):
         # First - read old image config, we'll update it instead of
         # generating one from scratch
         metadata = OrderedDict(self.old_image_config)
-        # Update image creation date
-        metadata['created'] = self.date
 
         # Remove unnecessary or old fields
         metadata.pop("container", None)
@@ -316,7 +309,7 @@ class V2Image(Image):
         metadata['rootfs']['diff_ids'] = metadata['rootfs'][
             'diff_ids'][:len(self.layer_paths_to_move)]
 
-        history = {'comment': '', 'created': self.date}
+        history = {'comment': '', 'created': metadata['created']}
 
         if self.layer_paths_to_squash:
             # Add diff_ids for the squashed layer
